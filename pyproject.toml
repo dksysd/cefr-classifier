@@ -1,0 +1,21 @@
+[project]
+name = "cefr-classifier"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "huggingface-hub>=0.20.0",
+    "llama-cpp-python>=0.3.16",
+    "numpy>=1.26.0",
+    "openai>=2.14.0",
+    "scikit-learn>=1.8.0",
+    "textstat>=0.7.12",
+    "torch>=2.0.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.40.0",
+    "datasets>=2.19.0",
+    "peft>=0.10.0",
+    "matplotlib",
+    "seaborn",
+    "sentence-transformers>=3.0.0",
+]

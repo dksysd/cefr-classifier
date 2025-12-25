@@ -1,0 +1,26 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# Data (데이터를 git에 포함)
+# data/
+# *.jsonl
+# *.csv
+
+# Models (가중치 파일 제외)
+*.gguf
+*.pt
+*.bin
+*.ckpt
+output_dir/
+cefr_router_v3/
+experiments/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
