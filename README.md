@@ -132,6 +132,13 @@ uv run python training/train.py --grid_search \
     --output_dir experiments
 ```
 
+이전 버전의 `train.py` 를 인자 없이 실행했을 때와 같은 설정(배포 모델 학습에 쓰였을 가능성이 높은 설정)은 다음과 같습니다:
+
+```bash
+uv run python training/train.py --grid_search --mode instruction_only \
+    --grid_lora extreme --grid_lr lr_5e5 --grid_scheduler cosine --grid_ratio ratio_100
+```
+
 주요 옵션: `--mode {mixed,parallel_only,instruction_only}`, `--loss {ols,focal}`, `--no_lora`(전체 fine-tuning), `--max_length`, `--epochs`. 전체 목록은 `--help` 를 참고하세요.
 
 학습이 끝나면 LoRA 어댑터를 병합한 모델이 `--output_dir` 에 저장되어 `transformers` 만으로 로드할 수 있습니다.
@@ -139,8 +146,9 @@ uv run python training/train.py --grid_search \
 ### 평가 방식
 
 * **Group split:** 같은 원문(parallel)·같은 질문(instruction)에서 나온 6개 레벨 텍스트는 train/test 중 한쪽에만 들어갑니다.
-  이전 버전은 샘플 단위로 무작위 분할하여, 검증 샘플 전부가 train에 같은 내용의 다른 레벨 버전을 가지고 있었습니다.
-  따라서 이전에 보고된 수치는 낙관적으로 추정되었을 수 있으며, 재학습 시 수치가 달라질 수 있습니다.
+  이전 버전은 샘플 단위로 무작위 분할하여, 모든 검증 샘플에 대해 같은 내용의 *다른 레벨* 버전이 train에 들어 있었습니다.
+  정답 레이블 자체가 새는 것은 아니지만, 이 방식은 "이미 본 내용의 레벨 변형"을 맞히는 능력만 측정하고
+  처음 보는 내용에 대한 일반화는 측정하지 못합니다. 그 차이가 수치에 얼마나 영향을 주는지는 재학습해야 알 수 있습니다.
 * **지표:** accuracy, macro/weighted F1 외에 서열 지표인 **QWK**(quadratic weighted kappa), **인접 정확도**(±1 레벨), **MAE**를 함께 보고합니다.
 * 검증 데이터 역시 합성 데이터이므로, 실제 사람이 작성·라벨링한 텍스트에 대한 성능은 별도로 확인이 필요합니다.
 
