@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import re
@@ -548,14 +549,31 @@ class InstructionDataGenerator:
 # 5. Main Execution
 # ============================================ 
 
-def main():
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Qwen3 기반 CEFR 합성 데이터 생성 파이프라인")
+    parser.add_argument("--samples", type=int, default=Config.SAMPLES_PER_DOMAIN,
+                        help="도메인별 원문/질문 생성 개수")
+    parser.add_argument("--model_repo", default=Config.MODEL_REPO)
+    parser.add_argument("--model_filename", default=Config.MODEL_FILENAME)
+    parser.add_argument("--output_dir", default=str(REPO_ROOT / "data"),
+                        help="parallel_corpus/, instructions/, intermediate/ 가 생성될 디렉토리")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    output_dir = Path(args.output_dir)
+
     logger.info("=" * 60)
     logger.info("CEFR Dataset Generation Pipeline")
     logger.info("=" * 60)
 
     # Initialize Generator
     try:
-        text_generator = TextGenerator()
+        text_generator = TextGenerator(args.model_repo, args.model_filename)
     except Exception:
         logger.critical("Failed to initialize TextGenerator. Exiting.")
         return
@@ -564,18 +582,19 @@ def main():
     logger.info("\nStep 1: Generating Sample Data...")
     sample_gen = SampleGenerator(text_generator)
 
-    sample_texts = sample_gen.generate_source_texts(num_per_domain=Config.SAMPLES_PER_DOMAIN)
-    sample_queries = sample_gen.generate_queries(num_per_domain=Config.SAMPLES_PER_DOMAIN)
+    sample_texts = sample_gen.generate_source_texts(num_per_domain=args.samples)
+    sample_queries = sample_gen.generate_queries(num_per_domain=args.samples)
 
     # Save Intermediate Samples (Optional but good for safety)
-    Path("data/intermediate").mkdir(parents=True, exist_ok=True)
-    with open("data/intermediate/source_texts.json", "w", encoding="utf-8") as f:
+    intermediate_dir = output_dir / "intermediate"
+    intermediate_dir.mkdir(parents=True, exist_ok=True)
+    with open(intermediate_dir / "source_texts.json", "w", encoding="utf-8") as f:
         json.dump(sample_texts, f, indent=2, ensure_ascii=False)
-    with open("data/intermediate/queries.json", "w", encoding="utf-8") as f:
+    with open(intermediate_dir / "queries.json", "w", encoding="utf-8") as f:
         json.dump(sample_queries, f, indent=2, ensure_ascii=False)
 
     # 2. Generate Parallel Corpus (Incremental Save)
-    output_path = Path("../data/parallel_corpus/train.jsonl")
+    output_path = output_dir / "parallel_corpus" / "train.jsonl"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"\nStep 2: Generating Parallel Corpus -> {output_path}")
@@ -591,7 +610,7 @@ def main():
     logger.info(f"Generated {count} parallel corpus entries.")
 
     # 3. Generate Instruction Data (Incremental Save)
-    output_path = Path("../data/instructions/train.jsonl")
+    output_path = output_dir / "instructions" / "train.jsonl"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"\nStep 3: Generating Instruction Data -> {output_path}")

@@ -31,8 +31,11 @@ cefr-classifier/
 ├── generation/             # 데이터 생성 파이프라인
 │   └── generator_pipeline.py  # Qwen3 기반 생성 스크립트
 ├── training/               # 모델 학습
+│   ├── data.py             # 데이터 로드 및 원문/질문 단위 group split
 │   ├── loss.py             # 사용자 정의 Ordinal Label Smoothing Loss
 │   └── train.py            # Grid Search 기능이 포함된 학습 스크립트
+├── tests/                  # loss / 데이터 로더 / split 단위 테스트
+├── predict.py              # 추론 CLI
 ├── .gitignore
 ├── pyproject.toml          # 의존성 관리 (uv 사용)
 └── README.md
@@ -44,13 +47,14 @@ cefr-classifier/
 
 ```bash
 # 리포지토리 클론
-git clone https://github.com/YOUR_USERNAME/cefr-classifier.git
+git clone https://github.com/dksysd/cefr-classifier.git
 cd cefr-classifier
 
 # 의존성 설치
 uv sync
-# 또는 pip 사용 시 (requirements.txt가 있는 경우)
-# pip install -r requirements.txt
+
+# 테스트 (CPU에서 동작)
+uv run --with pytest pytest
 ```
 
 *참고: 효율적인 데이터 생성을 위해 GPU 지원이 활성화된 `llama-cpp-python`이 필요합니다.*
@@ -64,7 +68,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # 모델 및 토크나이저 로드
-model_id = "dksysd/cefr-classifier"  # 실제 모델 ID로 변경 필요
+model_id = "dksysd/cefr-classifier"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForSequenceClassification.from_pretrained(model_id)
 
@@ -84,32 +88,61 @@ text = "The cat sat on the mat."
 print(f"Level: {predict_cefr(text)}") # 예상 결과: A1
 ```
 
+CLI로도 사용할 수 있습니다:
+
+```bash
+uv run python predict.py "The cat sat on the mat." --all_scores
+uv run python predict.py --model ./results --file texts.txt   # 로컬 모델, 한 줄에 텍스트 하나
+```
+
 ## 🛠️ 사용법 (Usage)
 
 ### 1. 데이터 생성 (Distillation)
 
 로컬 LLM(Qwen3)을 사용하여 합성 학습 데이터를 생성합니다. 이 단계는 LLM의 지식을 구조화된 데이터셋으로 증류합니다.
+경로는 리포지토리 루트 기준으로 처리되므로 어느 디렉토리에서 실행해도 됩니다.
 
 ```bash
-cd generation
-python generator_pipeline.py \
+uv run python generation/generator_pipeline.py \
     --samples 100 \
     --model_repo "unsloth/Qwen3-32B-GGUF" \
-    --output_dir "../data"
+    --model_filename "Qwen3-32B-Q4_1.gguf" \
+    --output_dir data
 ```
+
+출력은 표준 JSONL(한 줄에 객체 하나)입니다. 학습 스크립트는 이 형식과 기존 배포 데이터의 형식(한 줄에 객체 배열)을 모두 읽습니다.
+
+> ⚠️ `--output_dir` 기본값은 `data/` 이며, 기존 `train.jsonl` 을 덮어씁니다.
 
 ### 2. 모델 학습
 
-생성된 데이터를 사용하여 분류기를 학습시킵니다. 스크립트는 자동 Grid Search를 지원합니다.
-
 ```bash
-cd training
-python train.py \
-    --instruction_file "../data/instructions/train.jsonl" \
-    --parallel_file "../data/parallel_corpus/train.jsonl" \
-    --output_dir "./results" \
-    --lr 2e-5
+# 단일 실험
+uv run python training/train.py \
+    --mode mixed --instruction_ratio 0.5 \
+    --lr 3e-5 --scheduler cosine \
+    --lora_r 64 --lora_alpha 128 \
+    --output_dir results
+
+# Grid Search (키를 생략하면 해당 축의 모든 값을 사용)
+uv run python training/train.py --grid_search \
+    --mode instruction_only \
+    --grid_lora baseline,extreme --grid_lr lr_2e5,lr_5e5 \
+    --grid_scheduler cosine --grid_ratio ratio_100 \
+    --output_dir experiments
 ```
+
+주요 옵션: `--mode {mixed,parallel_only,instruction_only}`, `--loss {ols,focal}`, `--no_lora`(전체 fine-tuning), `--max_length`, `--epochs`. 전체 목록은 `--help` 를 참고하세요.
+
+학습이 끝나면 LoRA 어댑터를 병합한 모델이 `--output_dir` 에 저장되어 `transformers` 만으로 로드할 수 있습니다.
+
+### 평가 방식
+
+* **Group split:** 같은 원문(parallel)·같은 질문(instruction)에서 나온 6개 레벨 텍스트는 train/test 중 한쪽에만 들어갑니다.
+  이전 버전은 샘플 단위로 무작위 분할하여, 검증 샘플 전부가 train에 같은 내용의 다른 레벨 버전을 가지고 있었습니다.
+  따라서 이전에 보고된 수치는 낙관적으로 추정되었을 수 있으며, 재학습 시 수치가 달라질 수 있습니다.
+* **지표:** accuracy, macro/weighted F1 외에 서열 지표인 **QWK**(quadratic weighted kappa), **인접 정확도**(±1 레벨), **MAE**를 함께 보고합니다.
+* 검증 데이터 역시 합성 데이터이므로, 실제 사람이 작성·라벨링한 텍스트에 대한 성능은 별도로 확인이 필요합니다.
 
 ## 🔬 실험 및 인사이트 (Experiment & Insights)
 

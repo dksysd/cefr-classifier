@@ -1,7 +1,7 @@
 [project]
 name = "cefr-classifier"
 version = "0.1.0"
-description = "Add your description here"
+description = "CEFR (A1-C2) English text level classifier trained via synthetic data distillation from Qwen3"
 requires-python = ">=3.13"
 dependencies = [
     "huggingface-hub>=0.20.0",
@@ -12,10 +12,14 @@ dependencies = [
     "textstat>=0.7.12",
     "torch>=2.0.0",
     "tqdm>=4.67.1",
-    "transformers>=4.40.0",
+    "transformers>=4.46.0,<5",
     "datasets>=2.19.0",
     "peft>=0.10.0",
     "matplotlib",
     "seaborn",
     "sentence-transformers>=3.0.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
